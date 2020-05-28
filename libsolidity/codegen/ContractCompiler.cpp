@@ -39,6 +39,7 @@
 #include <libyul/Object.h>
 #include <libyul/optimiser/ASTCopier.h>
 #include <libyul/YulString.h>
+#include <libyul/Utilities.h>
 
 #include <libevmasm/Instruction.h>
 #include <libevmasm/Assembly.h>
@@ -1272,15 +1273,7 @@ void ContractCompiler::appendMissingFunctions()
 		solAssert(m_context.nextFunctionToCompile() != function, "Compiled the wrong function?");
 	}
 	m_context.appendMissingLowLevelFunctions();
-	auto [yulFunctions, externallyUsedYulFunctions] = m_context.requestedYulFunctions();
-	if (!yulFunctions.empty())
-		m_context.appendInlineAssembly(
-			"{" + move(yulFunctions) + "}",
-			{},
-			externallyUsedYulFunctions,
-			true,
-			m_optimiserSettings
-		);
+	m_context.appendYulUtilityFunctions(m_optimiserSettings);
 }
 
 void ContractCompiler::appendModifierOrFunctionCode()
