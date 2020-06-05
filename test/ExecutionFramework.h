@@ -55,7 +55,7 @@ class ExecutionFramework
 
 public:
 	ExecutionFramework();
-	explicit ExecutionFramework(langutil::EVMVersion _evmVersion);
+	ExecutionFramework(langutil::EVMVersion _evmVersion, std::vector<boost::filesystem::path> const& _vmPaths);
 	virtual ~ExecutionFramework() = default;
 
 	virtual bytes const& compileAndRunWithoutCheck(
@@ -255,6 +255,7 @@ private:
 	}
 
 protected:
+	void setEvm(evmc_capabilities _cap = evmc_capabilities::EVMC_CAPABILITY_EVM1);
 	void reset();
 
 	void sendMessage(bytes const& _data, bool _isCreation, u256 const& _value = 0);
@@ -279,7 +280,13 @@ protected:
 	solidity::frontend::RevertStrings m_revertStrings = solidity::frontend::RevertStrings::Default;
 	solidity::frontend::OptimiserSettings m_optimiserSettings = solidity::frontend::OptimiserSettings::minimal();
 	bool m_showMessages = false;
+
+	EVMHost* m_evmcHost;
+
 	std::shared_ptr<EVMHost> m_evmHost;
+	std::shared_ptr<EVMHost> m_ewasmHost;
+
+	std::vector<boost::filesystem::path> const& m_vmPaths;
 
 	bool m_transactionSuccessful = true;
 	Address m_sender = account(0);

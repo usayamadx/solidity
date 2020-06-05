@@ -39,7 +39,6 @@
 #include <test/InteractiveTests.h>
 #include <test/Common.h>
 #include <test/EVMHost.h>
-#include <test/Common.h>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
@@ -72,7 +71,7 @@ int registerTests(
 {
 	int numTestsAdded = 0;
 	fs::path fullpath = _basepath / _path;
-	TestCase::Config config{fullpath.string(), solidity::test::CommonOptions::get().evmVersion(), _enforceViaYul};
+	TestCase::Config config{fullpath.string(), solidity::test::CommonOptions::get().evmVersion(), solidity::test::CommonOptions::get().vmPaths, _enforceViaYul};
 	if (fs::is_directory(fullpath))
 	{
 		test_suite* sub_suite = BOOST_TEST_SUITE(_path.filename().string());
@@ -156,14 +155,27 @@ test_suite* init_unit_test_suite( int /*argc*/, char* /*argv*/[] )
 
 	initializeOptions();
 
-	bool disableSemantics = !solidity::test::EVMHost::getVM(solidity::test::CommonOptions::get().evmonePath.string());
-	if (disableSemantics)
+	bool disableSemantics = true;
+	try
 	{
-		cout << "Unable to find " << solidity::test::evmoneFilename << ". Please provide the path using -- --evmonepath <path>." << endl;
-		cout << "You can download it at" << endl;
-		cout << solidity::test::evmoneDownloadLink << endl;
-		cout << endl << "--- SKIPPING ALL SEMANTICS TESTS ---" << endl << endl;
+		disableSemantics = !solidity::test::EVMHost::checkVmPaths(solidity::test::CommonOptions::get().vmPaths);
 	}
+	catch (std::exception const& _exception)
+	{
+		cerr << "Error: " << _exception.what() << endl;
+		exit(1);
+	}
+	if (disableSemantics)
+		cout << endl << "--- SKIPPING ALL SEMANTICS TESTS ---" << endl << endl;
+
+	cout << "Loaded EVMC VM's:" << endl;
+	for (auto &vmPath : solidity::test::CommonOptions::get().vmPaths)
+	{
+		evmc::VM& vm = solidity::test::EVMHost::getVM(vmPath.string());
+		cout << "- " << vm.name() << " v" << vm.version()  << " [caps=0x" << hex << vm.get_capabilities() << dec << ", path=" << vmPath.string() << "]" << endl;
+	}
+	cout << endl;
+
 	// Include the interactive tests in the automatic tests as well
 	for (auto const& ts: g_interactiveTestsuites)
 	{
