@@ -1,0 +1,39 @@
+{
+  "absolutePath": "a",
+  "exportedSymbols": {},
+  "id": 4,
+  "nodeType": "SourceUnit",
+  "nodes":
+  [
+    {
+      "abstract": false,
+      "baseContracts": [],
+      "contractDependencies": [],
+      "contractKind": "contract",
+      "fullyImplemented": true,
+      "id": 3,
+      "linearizedBaseContracts": [],
+      "name": "C",
+      "nodeType": "ContractDefinition",
+      "nodes":
+      [
+        {
+          "anonymous": false,
+          "id": 2,
+          "name": "E",
+          "nodeType": "EventDefinition",
+          "parameters":
+          {
+            "id": 1,
+            "nodeType": "ParameterList",
+            "parameters": [],
+            "src": "20:2:1"
+          },
+          "src": "13:10:1"
+        }
+      ],
+      "src": "0:25:1"
+    }
+  ],
+  "src": "0:26:1"
+}

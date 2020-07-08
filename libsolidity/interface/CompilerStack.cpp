@@ -121,7 +121,7 @@ std::optional<CompilerStack::Remapping> CompilerStack::parseRemapping(string con
 
 void CompilerStack::setRemappings(vector<Remapping> const& _remappings)
 {
-	if (m_stackState >= ParsingPerformed)
+	if (m_stackState >= ParsedAndImported)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Must set remappings before parsing."));
 	for (auto const& remapping: _remappings)
 		solAssert(!remapping.prefix.empty(), "");
@@ -130,21 +130,21 @@ void CompilerStack::setRemappings(vector<Remapping> const& _remappings)
 
 void CompilerStack::setEVMVersion(langutil::EVMVersion _version)
 {
-	if (m_stackState >= ParsingPerformed)
+	if (m_stackState >= ParsedAndImported)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Must set EVM version before parsing."));
 	m_evmVersion = _version;
 }
 
 void CompilerStack::setSMTSolverChoice(smtutil::SMTSolverChoice _enabledSMTSolvers)
 {
-	if (m_stackState >= ParsingPerformed)
+	if (m_stackState >= ParsedAndImported)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Must set enabled SMT solvers before parsing."));
 	m_enabledSMTSolvers = _enabledSMTSolvers;
 }
 
 void CompilerStack::setLibraries(std::map<std::string, util::h160> const& _libraries)
 {
-	if (m_stackState >= ParsingPerformed)
+	if (m_stackState >= ParsedAndImported)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Must set libraries before parsing."));
 	m_libraries = _libraries;
 }
@@ -158,14 +158,14 @@ void CompilerStack::setOptimiserSettings(bool _optimize, unsigned _runs)
 
 void CompilerStack::setOptimiserSettings(OptimiserSettings _settings)
 {
-	if (m_stackState >= ParsingPerformed)
+	if (m_stackState >= ParsedAndImported)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Must set optimiser settings before parsing."));
 	m_optimiserSettings = std::move(_settings);
 }
 
 void CompilerStack::setRevertStringBehaviour(RevertStrings _revertStrings)
 {
-	if (m_stackState >= ParsingPerformed)
+	if (m_stackState >= ParsedAndImported)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Must set revert string settings before parsing."));
 	solUnimplementedAssert(_revertStrings != RevertStrings::VerboseDebug, "");
 	m_revertStrings = _revertStrings;
@@ -173,21 +173,21 @@ void CompilerStack::setRevertStringBehaviour(RevertStrings _revertStrings)
 
 void CompilerStack::useMetadataLiteralSources(bool _metadataLiteralSources)
 {
-	if (m_stackState >= ParsingPerformed)
+	if (m_stackState >= ParsedAndImported)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Must set use literal sources before parsing."));
 	m_metadataLiteralSources = _metadataLiteralSources;
 }
 
 void CompilerStack::setMetadataHash(MetadataHash _metadataHash)
 {
-	if (m_stackState >= ParsingPerformed)
+	if (m_stackState >= ParsedAndImported)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Must set metadata hash before parsing."));
 	m_metadataHash = _metadataHash;
 }
 
 void CompilerStack::addSMTLib2Response(h256 const& _hash, string const& _response)
 {
-	if (m_stackState >= ParsingPerformed)
+	if (m_stackState >= ParsedAndImported)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Must add SMTLib2 responses before parsing."));
 	m_smtlib2Responses[_hash] = _response;
 }
@@ -211,6 +211,7 @@ void CompilerStack::reset(bool _keepSettings)
 		m_optimiserSettings = OptimiserSettings::minimal();
 		m_metadataLiteralSources = false;
 		m_metadataHash = MetadataHash::IPFS;
+		m_stopAfter = State::CompilationSuccessful;
 	}
 	m_globalContext.reset();
 	m_sourceOrder.clear();
@@ -244,6 +245,7 @@ bool CompilerStack::parse()
 	vector<string> sourcesToParse;
 	for (auto const& s: m_sources)
 		sourcesToParse.push_back(s.first);
+
 	for (size_t i = 0; i < sourcesToParse.size(); ++i)
 	{
 		string const& path = sourcesToParse[i];
@@ -255,20 +257,51 @@ bool CompilerStack::parse()
 		else
 		{
 			source.ast->annotation().path = path;
-			for (auto const& newSource: loadMissingSources(*source.ast, path))
-			{
-				string const& newPath = newSource.first;
-				string const& newContents = newSource.second;
-				m_sources[newPath].scanner = make_shared<Scanner>(CharStream(newContents, newPath));
-				sourcesToParse.push_back(newPath);
-			}
+			if (m_stopAfter >= ParsedAndImported)
+				for (auto const& newSource: loadMissingSources(*source.ast, path))
+				{
+					string const& newPath = newSource.first;
+					string const& newContents = newSource.second;
+					m_sources[newPath].scanner = make_shared<Scanner>(CharStream(newContents, newPath));
+					sourcesToParse.push_back(newPath);
+				}
 		}
 	}
 
-	m_stackState = ParsingPerformed;
+	if (m_stopAfter <= Parsed)
+		m_stackState = Parsed;
+	else
+		m_stackState = ParsedAndImported;
 	if (!Error::containsOnlyWarnings(m_errorReporter.errors()))
 		m_hasError = true;
+
+	storeContractDefinitions();
+
 	return !m_hasError;
+}
+
+void CompilerStack::storeContractDefinitions()
+{
+	for (auto const& pair: m_sources)
+		if (pair.second.ast)
+			for (
+				ContractDefinition const* contract:
+				ASTNode::filteredNodes<ContractDefinition>(pair.second.ast->nodes())
+			)
+			{
+				string fullyQualifiedName = pair.second.ast->annotation().path + ":" + contract->name();
+				// Note that we now reference contracts by their fully qualified names, and
+				// thus contracts can only conflict if declared in the same source file. This
+				// should already cause a double-declaration error elsewhere.
+				if (!m_contracts.count(fullyQualifiedName))
+					m_contracts[fullyQualifiedName].contract = contract;
+				else
+					solAssert(
+						m_errorReporter.hasErrors(),
+						"Contract already present (name clash?), but no error was reported."
+					);
+			}
+
 }
 
 void CompilerStack::importASTs(map<string, Json::Value> const& _sources)
@@ -287,13 +320,15 @@ void CompilerStack::importASTs(map<string, Json::Value> const& _sources)
 		source.scanner = scanner;
 		m_sources[path] = source;
 	}
-	m_stackState = ParsingPerformed;
+	m_stackState = ParsedAndImported;
 	m_importedSources = true;
+
+	storeContractDefinitions();
 }
 
 bool CompilerStack::analyze()
 {
-	if (m_stackState != ParsingPerformed || m_stackState >= AnalysisPerformed)
+	if (m_stackState != ParsedAndImported || m_stackState >= AnalysisPerformed)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Must call analyze only after parsing was performed."));
 	resolveImports();
 
@@ -328,26 +363,6 @@ bool CompilerStack::analyze()
 		for (Source const* source: m_sourceOrder)
 			if (source->ast && !resolver.resolveNamesAndTypes(*source->ast))
 				return false;
-
-		// Store contract definitions.
-		for (Source const* source: m_sourceOrder)
-			if (source->ast)
-				for (
-					ContractDefinition const* contract:
-					ASTNode::filteredNodes<ContractDefinition>(source->ast->nodes())
-				)
-				{
-					// Note that we now reference contracts by their fully qualified names, and
-					// thus contracts can only conflict if declared in the same source file. This
-					// should already cause a double-declaration error elsewhere.
-					if (!m_contracts.count(contract->fullyQualifiedName()))
-						m_contracts[contract->fullyQualifiedName()].contract = contract;
-					else
-						solAssert(
-							m_errorReporter.hasErrors(),
-							"Contract already present (name clash?), but no error was reported."
-						);
-				}
 
 		DeclarationTypeChecker declarationTypeChecker(m_errorReporter, m_evmVersion);
 		for (Source const* source: m_sourceOrder)
@@ -464,9 +479,13 @@ bool CompilerStack::analyze()
 	return !m_hasError;
 }
 
-bool CompilerStack::parseAndAnalyze()
+bool CompilerStack::parseAndAnalyze(State _stopAfter)
 {
+	m_stopAfter = _stopAfter;
+
 	bool success = parse();
+	if (m_stackState >= m_stopAfter)
+		return success;
 	if (success || m_parserErrorRecovery)
 		success = analyze();
 	return success;
@@ -497,11 +516,15 @@ bool CompilerStack::isRequestedContract(ContractDefinition const& _contract) con
 	return false;
 }
 
-bool CompilerStack::compile()
+bool CompilerStack::compile(State _stopAfter)
 {
+	m_stopAfter = _stopAfter;
 	if (m_stackState < AnalysisPerformed)
-		if (!parseAndAnalyze())
+		if (!parseAndAnalyze(_stopAfter))
 			return false;
+
+	if (m_stackState >= m_stopAfter)
+		return true;
 
 	if (m_hasError)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Called compile with errors."));
@@ -547,8 +570,6 @@ void CompilerStack::link()
 
 vector<string> CompilerStack::contractNames() const
 {
-	if (m_stackState < AnalysisPerformed)
-		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Parsing was not successful."));
 	vector<string> contractNames;
 	for (auto const& contract: m_contracts)
 		contractNames.push_back(contract.first);
@@ -850,7 +871,7 @@ Scanner const& CompilerStack::scanner(string const& _sourceName) const
 
 SourceUnit const& CompilerStack::ast(string const& _sourceName) const
 {
-	if (m_stackState < ParsingPerformed)
+	if (m_stackState < Parsed)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Parsing not yet performed."));
 	if (!source(_sourceName).ast && !m_parserErrorRecovery)
 		BOOST_THROW_EXCEPTION(CompilerError() << errinfo_comment("Parsing was not successful."));
@@ -923,7 +944,7 @@ string const& CompilerStack::Source::ipfsUrl() const
 
 StringMap CompilerStack::loadMissingSources(SourceUnit const& _ast, std::string const& _sourcePath)
 {
-	solAssert(m_stackState < ParsingPerformed, "");
+	solAssert(m_stackState < ParsedAndImported, "");
 	StringMap newSources;
 	try
 	{
@@ -967,7 +988,7 @@ StringMap CompilerStack::loadMissingSources(SourceUnit const& _ast, std::string 
 
 string CompilerStack::applyRemapping(string const& _path, string const& _context)
 {
-	solAssert(m_stackState < ParsingPerformed, "");
+	solAssert(m_stackState < ParsedAndImported, "");
 	// Try to find the longest prefix match in all remappings that are active in the current context.
 	auto isPrefixOf = [](string const& _a, string const& _b)
 	{
@@ -1009,7 +1030,7 @@ string CompilerStack::applyRemapping(string const& _path, string const& _context
 
 void CompilerStack::resolveImports()
 {
-	solAssert(m_stackState == ParsingPerformed, "");
+	solAssert(m_stackState == ParsedAndImported, "");
 
 	// topological sorting (depth first search) of the import graph, cutting potential cycles
 	vector<Source const*> sourceOrder;

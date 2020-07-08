@@ -190,7 +190,9 @@ util::Result<TypePointers> transformParametersToExternal(TypePointers const& _pa
 
 	for (auto const& type: _parameters)
 	{
-		if (TypePointer ext = type->interfaceType(_inLibrary).get())
+		if (!type)
+			return util::Result<TypePointers>::err("Type information not present.");
+		else if (TypePointer ext = type->interfaceType(_inLibrary).get())
 			transformed.push_back(ext);
 		else
 			return util::Result<TypePointers>::err("Parameter should have external type.");

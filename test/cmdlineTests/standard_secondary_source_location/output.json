@@ -7,4 +7,4 @@ pragma solidity >=0.0; contract A { constructor(uint) {} } contract B is A(2) { 
 A:2:97: Second constructor call is here:
 pragma solidity >=0.0; contract A { constructor(uint) {} } contract B is A(2) { } contract C is A(3) {} contract D is B, C {}
                                                                                                 ^--^
-","message":"Base constructor arguments given twice.","secondarySourceLocations":[{"end":112,"file":"A","message":"First constructor call is here:","start":108},{"end":135,"file":"A","message":"Second constructor call is here:","start":131}],"severity":"error","sourceLocation":{"end":160,"file":"A","start":139},"type":"DeclarationError"}],"sources":{}}
+","message":"Base constructor arguments given twice.","secondarySourceLocations":[{"end":112,"file":"A","message":"First constructor call is here:","start":108},{"end":135,"file":"A","message":"Second constructor call is here:","start":131}],"severity":"error","sourceLocation":{"end":160,"file":"A","start":139},"type":"DeclarationError"}],"sources":{"A":{"id":0}}}

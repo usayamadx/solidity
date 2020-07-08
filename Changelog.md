@@ -5,6 +5,7 @@ Language Features:
 
 
 Compiler Features:
+ * General: Option to stop compilation after parsing stage. Can be used with ``solc --stop-after parsing``
  * SMTChecker: Add underflow and overflow as verification conditions in the CHC engine.
  * Standard JSON Interface: Do not run EVM bytecode code generation, if only Yul IR or EWasm output is requested.
  * Yul: Report error when using non-string literals for ``datasize()``, ``dataoffset()``, ``linkersymbol()``, ``loadimmutable()``, ``setimmutable()``.

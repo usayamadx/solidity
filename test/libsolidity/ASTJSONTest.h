@@ -34,7 +34,6 @@ class CompilerStack;
 namespace solidity::frontend::test
 {
 
-
 class ASTJSONTest: public TestCase
 {
 public:
@@ -50,7 +49,7 @@ private:
 	bool runTest(
 		std::string& _expectation,
 		std::string& _result,
-		std::map<std::string, unsigned> const& _sourceIndicies,
+		std::map<std::string, unsigned> const& _sourceIndices,
 		CompilerStack& _compiler,
 		bool _legacy,
 		std::string const& _variation,
@@ -66,10 +65,13 @@ private:
 
 	std::vector<std::pair<std::string, std::string>> m_sources;
 	std::string m_expectationLegacy;
+	std::string m_expectationParseOnly;
 	std::string m_astFilename;
+	std::string m_astParseOnlyFilename;
 	std::string m_legacyAstFilename;
 	std::string m_result;
 	std::string m_resultLegacy;
+	std::string m_resultParseOnly;
 };
 
 }
