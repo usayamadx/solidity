@@ -27,6 +27,9 @@ parameters:
     type: string
     default: "solbuildpackpusher/solidity-buildpack-deps@sha256:d557d015918c3cf68b0d22839bab41013f0757b651a7fef21595f89721dbebcc"
 
+orbs:
+  win: circleci/windows@2.2.0
+
 defaults:
 
   # --------------------------------------------------------------------------
@@ -63,6 +66,10 @@ defaults:
   - artifacts_solc: &artifacts_solc
       path: build/solc/solc
       destination: solc
+
+  - artifact_solc_windows: &artifact_solc_windows
+      path: solidity-windows.zip
+      destination: solidity-windows.zip
 
   # compiled tool executable target
   - artifacts_tools: &artifacts_tools
@@ -261,6 +268,41 @@ defaults:
 
 # -----------------------------------------------------------------------------------------------
 jobs:
+
+  b_windows:
+    executor:
+      name: win/default
+      shell: powershell.exe
+    steps:
+      - checkout
+      - run: systeminfo
+      - run:
+          name: "Preparing environment"
+          command: |
+            .\.circleci\prepare_env.ps1
+      - run:
+          name: "Running CMake"
+          command: |
+            $env:Path = "$Env:ProgramFiles\CMake\bin;$env:Path";
+            mkdir build
+            cd build
+            cmake .. -G "Visual Studio 16 2019" -DTESTS=ON -DBOOST_ROOT=C:/Libraries/boost_1_73_0
+      - run:
+          name: "Building Solidity"
+          command: |
+            $env:Path = "$Env:ProgramFiles\CMake\bin;$env:Path";
+            cmake --build build/ --config Release --parallel 3
+            Get-ChildItem -Path build/ -Recurse -Include "*.exe" | Select-Object -ExpandProperty FullName
+      - run:
+          name: "Creating release Zip file"
+          command: |
+            scripts\release.ps1
+      - store_artifacts: *artifact_solc_windows
+      - run:
+          name: "Run soltest"
+          command: |
+            $env:APPVEYOR_PULL_REQUEST_HEAD_COMMIT = ""
+            .\build\test\Release\soltest.exe --show-progress -- --testpath .\test --no-smt --evmonepath=evmone\bin\evmone.dll
 
   chk_spelling:
     docker:
@@ -856,6 +898,8 @@ workflows:
 
   main:
     jobs:
+      - b_windows: *workflow_trigger_on_tags
+
       # basic checks
       - chk_spelling: *workflow_trigger_on_tags
       - chk_coding_style: *workflow_trigger_on_tags
