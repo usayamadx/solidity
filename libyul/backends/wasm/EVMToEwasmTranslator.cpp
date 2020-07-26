@@ -841,18 +841,28 @@ function callvalue() -> z1, z2, z3, z4 {
 	z1, z2, z3, z4 := mload_internal(0:i32)
 }
 function calldataload(x1, x2, x3, x4) -> z1, z2, z3, z4 {
-	eth.callDataCopy(0:i32, u256_to_i32(x1, x2, x3, x4), 32:i32)
+	mstore_internal(0:i32, 0, 0, 0, 0)
+	calldatacopy(0, 0, 0, 0, x1, x2, x3, x4, 0, 0, 0, i64.extend_i32_u(eth.getCallDataSize()))
 	z1, z2, z3, z4 := mload_internal(0:i32)
 }
 function calldatasize() -> z1, z2, z3, z4 {
 	z4 := i64.extend_i32_u(eth.getCallDataSize())
 }
+// calldatacopy(t, f, s): copy s bytes from calldata at position f to mem at position t
 function calldatacopy(x1, x2, x3, x4, y1, y2, y3, y4, z1, z2, z3, z4) {
-	eth.callDataCopy(
-		to_internal_i32ptr(x1, x2, x3, x4),
-		u256_to_i32(y1, y2, y3, y4),
-		u256_to_i32(z1, z2, z3, z4)
-	)
+	let cds:i32 := eth.getCallDataSize()
+	let offset:i32 := u256_to_i32(y1, y2, y3, y4)
+	let size:i32 := u256_to_i32(z1, z2, z3, z4)
+	if i32.gt_u(i32.add(size, offset), cds) {
+		size := i32.sub(cds, offset)
+	}
+	if i32.gt_u(size, 0:i32) {
+		eth.callDataCopy(
+			u256_to_i32(x1, x2, x3, x4),
+			offset,
+			size
+		)
+	}
 }
 
 // Needed?
