@@ -56,6 +56,7 @@ struct WasmDialect: public Dialect
 
 private:
 	void addEthereumExternals();
+	void addDebugExternals();
 
 	void addFunction(
 		std::string _name,
@@ -66,6 +67,20 @@ private:
 	);
 
 	std::map<YulString, BuiltinFunction> m_functions;
+
+	// These are not YulStrings because that would be too complicated with regards
+	// to the YulStringRepository reset.
+	static std::string const i64;
+	static std::string const i32;
+	static std::string const i32ptr;
+
+	struct External
+	{
+		std::string name;
+		std::vector<std::string> parameters;
+		std::vector<std::string> returns;
+		ControlFlowSideEffects controlFlowSideEffects = ControlFlowSideEffects{};
+	};
 };
 
 }
