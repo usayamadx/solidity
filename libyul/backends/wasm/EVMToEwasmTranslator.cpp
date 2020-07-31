@@ -812,13 +812,16 @@ function keccak256(x1, x2, x3, x4, y1, y2, y3, y4) -> z1, z2, z3, z4 {
 }
 
 function address() -> z1, z2, z3, z4 {
-	eth.getAddress(0:i32)
-	z1, z2, z3, z4 := mload_internal(0:i32)
+	eth.getAddress(4:i32)
+	z2 := i64.and(endian_swap(i64.load(0:i32)), 0x00000000ffffffff)
+	z3 := endian_swap(i64.load(8:i32))
+	z4 := endian_swap(i64.load(16:i32))
 }
 function balance(x1, x2, x3, x4) -> z1, z2, z3, z4 {
 	mstore_address(0:i32, x1, x2, x3, x4)
-	eth.getExternalBalance(12:i32, 48:i32)
-	z1, z2, z3, z4 := mload_internal(32:i32)
+	eth.getExternalBalance(12:i32, 32:i32)
+	z4 := i64.load(32:i32)
+	z3 := i64.load(40:i32)
 }
 function selfbalance() -> z1, z2, z3, z4 {
 	// TODO: not part of current Ewasm spec
