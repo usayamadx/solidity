@@ -11,6 +11,7 @@ Compiler Features:
  * Yul Optimizer: LoopInvariantCodeMotion can move reading operations outside for-loops as long as the affected area is not modified inside the loop.
  * SMTChecker: Support conditional operator.
  * SMTChecker: Support bitwise or, xor and not operators.
+ * Yul Optimizer: Prune unused parameters in functions.
 
 Bugfixes:
  * AST: Remove ``null`` member values also when the compiler is used in standard-json-mode.
