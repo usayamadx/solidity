@@ -403,8 +403,7 @@ void SMTEncoder::endVisit(Assignment const& _assignment)
 			assignment(
 				_assignment.leftHandSide(),
 				expr(_assignment, type),
-				type,
-				_assignment.location()
+				type
 			);
 		}
 	}
@@ -524,11 +523,7 @@ void SMTEncoder::endVisit(UnaryOperation const& _op)
 			)
 				indexOrMemberAssignment(_op.subExpression(), symbVar->currentValue());
 			else
-				m_errorReporter.warning(
-					2683_error,
-					_op.location(),
-					"Assertion checker does not yet implement \"delete\" for this expression."
-				);
+				solAssert(false, "");
 		}
 		break;
 	}
@@ -1058,11 +1053,15 @@ void SMTEncoder::indexOrMemberAssignment(Expression const& _expr, smtutil::Expre
 		}
 		else
 		{
-			m_errorReporter.warning(
-				9056_error,
-				_expr.location(),
-				"Assertion checker does not yet implement this expression."
-			);
+			auto type = lastExpr->annotation().type;
+			if (
+				dynamic_cast<ReferenceType const*>(type) ||
+				dynamic_cast<MappingType const*>(type)
+			)
+				resetReferences(type);
+
+			m_context.expression(*lastExpr)->increaseIndex();
+			m_context.addAssertion(expr(*lastExpr) == toStore);
 			break;
 		}
 	}
@@ -1164,12 +1163,6 @@ void SMTEncoder::arrayPushPopAssign(Expression const& _expr, smtutil::Expression
 			arrayPushPopAssign(memberAccess->expression(), symbArray->currentValue());
 		}
 	}
-	else if (dynamic_cast<MemberAccess const*>(expr))
-		m_errorReporter.warning(
-			9599_error,
-			_expr.location(),
-			"Assertion checker does not yet implement this expression."
-		);
 	else
 		solAssert(false, "");
 }
@@ -1458,8 +1451,7 @@ smtutil::Expression SMTEncoder::division(smtutil::Expression _left, smtutil::Exp
 void SMTEncoder::assignment(
 	Expression const& _left,
 	smtutil::Expression const& _right,
-	TypePointer const& _type,
-	langutil::SourceLocation const& _location
+	TypePointer const& _type
 )
 {
 	solAssert(
@@ -1474,12 +1466,6 @@ void SMTEncoder::assignment(
 		// Give it a new index anyway to keep the SSA scheme sound.
 		if (auto varDecl = identifierToVariable(*left))
 			m_context.newValue(*varDecl);
-
-		m_errorReporter.warning(
-			6191_error,
-			_location,
-			"Assertion checker does not yet implement type " + _type->toString()
-		);
 	}
 	else if (auto varDecl = identifierToVariable(*left))
 		assignment(*varDecl, _right);
@@ -1489,11 +1475,7 @@ void SMTEncoder::assignment(
 	)
 		indexOrMemberAssignment(*left, _right);
 	else
-		m_errorReporter.warning(
-			8182_error,
-			_location,
-			"Assertion checker does not yet implement such assignments."
-		);
+		solAssert(false, "");
 }
 
 void SMTEncoder::tupleAssignment(Expression const& _left, Expression const& _right)
@@ -1522,7 +1504,7 @@ void SMTEncoder::tupleAssignment(Expression const& _left, Expression const& _rig
 			else
 			{
 				auto type = lExpr.annotation().type;
-				assignment(lExpr, expr(rExpr, type), type, lExpr.location());
+				assignment(lExpr, expr(rExpr, type), type);
 			}
 		}
 	}
@@ -1539,7 +1521,7 @@ void SMTEncoder::tupleAssignment(Expression const& _left, Expression const& _rig
 
 		for (unsigned i = 0; i < lComponents.size(); ++i)
 			if (auto component = lComponents.at(i); component && rComponents.at(i))
-				assignment(*component, smtutil::Expression::tuple_get(symbRight, i), component->annotation().type, component->location());
+				assignment(*component, smtutil::Expression::tuple_get(symbRight, i), component->annotation().type);
 	}
 }
 
@@ -1703,30 +1685,41 @@ void SMTEncoder::resetReferences(VariableDeclaration const& _varDecl)
 		if (_var.isStateVariable() && _varDecl.isStateVariable())
 			return false;
 
-		TypePointer prefix = _var.type();
-		TypePointer originalType = typeWithoutPointer(_varDecl.type());
-		while (
-			prefix->category() == Type::Category::Mapping ||
-			prefix->category() == Type::Category::Array
-		)
-		{
-			if (*originalType == *typeWithoutPointer(prefix))
-				return true;
-			if (prefix->category() == Type::Category::Mapping)
-			{
-				auto mapPrefix = dynamic_cast<MappingType const*>(prefix);
-				solAssert(mapPrefix, "");
-				prefix = mapPrefix->valueType();
-			}
-			else
-			{
-				auto arrayPrefix = dynamic_cast<ArrayType const*>(prefix);
-				solAssert(arrayPrefix, "");
-				prefix = arrayPrefix->baseType();
-			}
-		}
-		return false;
+		return sameTypeOrSubtype(_var.type(), _varDecl.type());
 	});
+}
+
+void SMTEncoder::resetReferences(TypePointer _type)
+{
+	m_context.resetVariables([&](VariableDeclaration const& _var) {
+		return sameTypeOrSubtype(_var.type(), _type);
+	});
+}
+
+bool SMTEncoder::sameTypeOrSubtype(TypePointer _a, TypePointer _b)
+{
+	TypePointer prefix = _a;
+	while (
+		prefix->category() == Type::Category::Mapping ||
+		prefix->category() == Type::Category::Array
+	)
+	{
+		if (*typeWithoutPointer(_b) == *typeWithoutPointer(prefix))
+			return true;
+		if (prefix->category() == Type::Category::Mapping)
+		{
+			auto mapPrefix = dynamic_cast<MappingType const*>(prefix);
+			solAssert(mapPrefix, "");
+			prefix = mapPrefix->valueType();
+		}
+		else
+		{
+			auto arrayPrefix = dynamic_cast<ArrayType const*>(prefix);
+			solAssert(arrayPrefix, "");
+			prefix = arrayPrefix->baseType();
+		}
+	}
+	return false;
 }
 
 TypePointer SMTEncoder::typeWithoutPointer(TypePointer const& _type)
